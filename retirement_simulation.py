@@ -908,20 +908,20 @@ class RetirementSimulator:
             tfsa_after += move_amt
             self.tfsa_room -= move_amt
             # Optional debug
-        self.logger.debug(f"Final optimization: moved ${move_amt:,.2f} NonReg -> TFSA (room left=${self.tfsa_room:,.2f})")
+            self.logger.debug(f"Final optimization: moved ${move_amt:,.2f} NonReg -> TFSA (room left=${self.tfsa_room:,.2f})")
 
-    # Growth timing
-    if self.withdraw_at_start:
-        rrif_end = rrif_after * (1.0 + self.real_ret)
-        tfsa_end = tfsa_after * (1.0 + self.real_ret)
-        nonreg_end = nonreg_after * (1.0 + self.nonreg_real_ret)
-    else:
-        rrif_end = rrif_after
-        tfsa_end = tfsa_after
-        nonreg_end = nonreg_after
+        # Growth timing
+        if self.withdraw_at_start:
+            rrif_end = rrif_after * (1.0 + self.real_ret)
+            tfsa_end = tfsa_after * (1.0 + self.real_ret)
+            nonreg_end = nonreg_after * (1.0 + self.nonreg_real_ret)
+        else:
+            rrif_end = rrif_after
+            tfsa_end = tfsa_after
+            nonreg_end = nonreg_after
 
-    next_year_recontribution = plan.w_tfsa_spend
-    return Balances(rrif_end, tfsa_end, nonreg_end), next_year_recontribution
+        next_year_recontribution = plan.w_tfsa_spend
+        return Balances(rrif_end, tfsa_end, nonreg_end), next_year_recontribution
 
     def _record_row(
         self,
