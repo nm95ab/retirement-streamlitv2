@@ -507,6 +507,57 @@ class RetirementSimulator:
                 lo = mid
         return hi
 
+    def _solve_melt_amount_under_marginal_cap(
+        self,
+        age_y: int,
+        age_s: int,
+        inc: Incomes,
+        base_plan: WithdrawPlan,
+        pots: PotBalances,
+        bracket_room_household: float,
+        peak_future_rate: float,
+        alive_y: bool = True,
+        alive_s: bool = True,
+    ) -> float:
+        """
+        Binary search for the maximum RRIF melt amount that keeps the household marginal 
+        tax rate below the peak_future_rate (minus small epsilon).
+        """
+        lo = 0.0
+        hi = max(0.0, bracket_room_household - base_plan.w_rrif_spend)
+        hi = min(hi, max(0.0, pots.rrif_pot - base_plan.w_rrif_spend))
+        
+        if hi <= 0:
+            return 0.0
+
+        best_amt = 0.0
+        # We want marginal + safety < peak_future_rate. 
+        # But here peak_future_rate is the target we compare AGAINST.
+        # The gating logic in _plan_withdrawals already checked 
+        # (current_marg + safety) < peak_future_rate.
+        # Now we just want to ensure that even after melting, we don't exceed the peak rate.
+        
+        for _ in range(15):
+            mid = (lo + hi) / 2.0
+            test_cash = self._compute_household_cash(
+                age_y, age_s, inc, 
+                base_plan.w_rrif_spend + mid, 
+                base_plan.w_nonreg_spend, 
+                base_plan.w_tfsa_spend, 
+                alive_y, alive_s
+            )
+            marg = max(test_cash.marginal_y, test_cash.marginal_sp)
+            
+            # Use a tiny buffer to avoid edge-of-bracket flip-flopping
+            if marg < peak_future_rate - 0.0001:
+                best_amt = mid
+                lo = mid
+            else:
+                hi = mid
+        
+        return best_amt
+
+
     # -------------------------
     # Per-year calculations
     # -------------------------
@@ -772,36 +823,59 @@ class RetirementSimulator:
                 remaining_room = min(remaining_room, max(0.0, pots.rrif_pot - plan.w_rrif_spend))
 
                 if remaining_room > 0:
-                    plan.w_rrif_transfer_gross = remaining_room
+                    mode = self.s.get("rrif_strategy_mode", "fixed")
 
-                    cash_with_transfer = self._compute_household_cash(
-                        age_y,
-                        age_s,
-                        inc,
-                        plan.w_rrif_spend + plan.w_rrif_transfer_gross,
-                        plan.w_nonreg_spend,
-                        plan.w_tfsa_spend,
-                        alive_y,
-                        alive_s,
-                    )
-                    plan.gross_total = cash_with_transfer.gross_total
-                    plan.net_total = cash_with_transfer.net_total
-                    plan.tax_total = cash_with_transfer.tax_total
-                    plan.rrif_you = cash_with_transfer.rrif_you
-                    plan.rrif_sp = cash_with_transfer.rrif_sp
-                    plan.marginal_y = cash_with_transfer.marginal_y
-                    plan.marginal_sp = cash_with_transfer.marginal_sp
+                    melt_amt = remaining_room
+                    if mode == "dynamic" and peak_future_rate > 0:
+                        melt_amt = self._solve_melt_amount_under_marginal_cap(
+                            age_y=age_y,
+                            age_s=age_s,
+                            inc=inc,
+                            base_plan=plan,
+                            pots=pots,
+                            bracket_room_household=bracket_room_household,
+                            peak_future_rate=peak_future_rate,
+                            alive_y=alive_y,
+                            alive_s=alive_s,
+                        )
 
-                    # 5) Capture INCREMENTAL after-tax cash created by the melt
-                    incremental_after_tax = max(0.0, plan.net_total - net_before_melt)
-                    if incremental_after_tax > 0:
-                        to_tfsa = min(incremental_after_tax, self.tfsa_room)
-                        to_nonreg = incremental_after_tax - to_tfsa
-                        plan.rrif_to_tfsa += to_tfsa
-                        plan.rrif_to_nonreg += to_nonreg
-                        self.tfsa_room -= to_tfsa
+                    plan.w_rrif_transfer_gross = float(melt_amt)
 
-        return plan
+                    if plan.w_rrif_transfer_gross > 0:
+                        net_before_melt = plan.net_total
+
+                        cash_with_transfer = self._compute_household_cash(
+                            age_y,
+                            age_s,
+                            inc,
+                            plan.w_rrif_spend + plan.w_rrif_transfer_gross,
+                            plan.w_nonreg_spend,
+                            plan.w_tfsa_spend,
+                            alive_y,
+                            alive_s,
+                        )
+
+                        plan.gross_total = cash_with_transfer.gross_total
+                        plan.net_total = cash_with_transfer.net_total
+                        plan.tax_total = cash_with_transfer.tax_total
+                        plan.rrif_you = cash_with_transfer.rrif_you
+                        plan.rrif_sp = cash_with_transfer.rrif_sp
+                        plan.marginal_y = cash_with_transfer.marginal_y
+                        plan.marginal_sp = cash_with_transfer.marginal_sp
+                        plan.current_household_marginal = float(max(plan.marginal_y, plan.marginal_sp))
+
+                        incremental_after_tax = max(0.0, plan.net_total - net_before_melt)
+
+                        if incremental_after_tax > 0:
+                            to_tfsa = min(incremental_after_tax, self.tfsa_room)
+                            leftover = incremental_after_tax - to_tfsa
+
+                            plan.rrif_to_tfsa += to_tfsa
+                            self.tfsa_room -= to_tfsa
+
+                            plan.rrif_to_nonreg += leftover
+
+            return plan
 
     # -------------------------
     # Apply withdrawals + growth
