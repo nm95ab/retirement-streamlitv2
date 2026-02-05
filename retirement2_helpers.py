@@ -230,19 +230,54 @@ def declining_pension(age: int, start_age: int, amount: float, decline_pct: floa
 # 2) Tax & Income Logic (Engine) with SAFE caching
 # ==========================================================
 
+def _normalize_brackets_input(brackets: Any) -> str:
+    """
+    Convert brackets input into a deterministic JSON string so it can be cached safely.
+    Accepts:
+      - JSON string
+      - Python list/tuple of pairs
+      - None/empty -> "[]"
+    """
+    if brackets is None:
+        return "[]"
+
+    # If already a list/tuple, normalize and dump to JSON for a stable cache key
+    if isinstance(brackets, (list, tuple)):
+        try:
+            arr = [[float(a), float(b)] for a, b in brackets]
+            arr.sort(key=lambda x: x[0])
+            return json.dumps(arr, separators=(",", ":"), ensure_ascii=False)
+        except Exception:
+            return "[]"
+
+    # Otherwise treat as string
+    s = str(brackets).strip()
+    return s if s else "[]"
+
+
 @lru_cache(maxsize=64)
-def _parse_brackets_cached(brackets_json: str) -> Tuple[Tuple[float, float], ...]:
+def _parse_brackets_cached(brackets_key: str) -> Tuple[Tuple[float, float], ...]:
+    """
+    brackets_key is always a JSON string produced by _normalize_brackets_input().
+    """
     try:
-        data = json.loads(brackets_json)
-        data.sort(key=lambda x: x[0])
-        return tuple((float(top), float(rate)) for top, rate in data)
+        data = json.loads(brackets_key)
+        out: List[Tuple[float, float]] = []
+        for top, rate in data:
+            out.append((float(top), float(rate)))
+        out.sort(key=lambda x: x[0])
+        return tuple(out)
     except Exception:
         return tuple()
 
 
-def parse_brackets(brackets_json: str) -> list:
-    """Parses JSON brackets into a list of (threshold, rate)."""
-    return [list(x) for x in _parse_brackets_cached(brackets_json)]
+def parse_brackets(brackets_input: Any) -> list:
+    """
+    Public helper used everywhere else.
+    Returns list of [top, rate].
+    """
+    key = _normalize_brackets_input(brackets_input)
+    return [list(x) for x in _parse_brackets_cached(key)]
 
 
 def tax_from_brackets(taxable_income: float, brackets: list) -> float:
