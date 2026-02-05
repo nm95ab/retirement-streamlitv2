@@ -627,61 +627,61 @@ class RetirementSimulator:
 
         return bracket_ceiling, room_y + room_s, peak_r
     def _solve_melt_amount_under_marginal_cap(
-    self,
-    age_y: int,
-    age_s: int,
-    inc: Incomes,
-    base_plan: WithdrawPlan,
-    pots: PotBalances,
-    bracket_room_household: float,
-    peak_future_rate: float,
-    alive_y: bool,
-    alive_s: bool,
-) -> float:
-    """
-    Find the largest melt amount m in [0, melt_cap] such that:
-        max(marg_y, marg_s) + safety <= peak_future_rate
-    Uses binary search on m (post-melt marginal).
-    """
-    safety = float(self.dynamic_melt_safety_margin)
+        self,
+        age_y: int,
+        age_s: int,
+        inc: Incomes,
+        base_plan: WithdrawPlan,
+        pots: PotBalances,
+        bracket_room_household: float,
+        peak_future_rate: float,
+        alive_y: bool,
+        alive_s: bool,
+    ) -> float:
+        """
+        Find the largest melt amount m in [0, melt_cap] such that:
+            max(marg_y, marg_s) + safety <= peak_future_rate
+        Uses binary search on m (post-melt marginal).
+        """
+        safety = float(self.dynamic_melt_safety_margin)
 
-    # Maximum melt allowed by bracket room and remaining RRIF funds
-    melt_cap = max(0.0, bracket_room_household - base_plan.w_rrif_spend)
-    melt_cap = min(melt_cap, max(0.0, pots.rrif_pot - base_plan.w_rrif_spend))
-    if melt_cap <= 0.0 or peak_future_rate <= 0.0:
-        return 0.0
+        # Maximum melt allowed by bracket room and remaining RRIF funds
+        melt_cap = max(0.0, bracket_room_household - base_plan.w_rrif_spend)
+        melt_cap = min(melt_cap, max(0.0, pots.rrif_pot - base_plan.w_rrif_spend))
+        if melt_cap <= 0.0 or peak_future_rate <= 0.0:
+            return 0.0
 
-    # Quick check: if even the max melt is safe, take it
-    probe_hi = self._compute_household_cash(
-        age_y, age_s, inc,
-        base_plan.w_rrif_spend + melt_cap,
-        base_plan.w_nonreg_spend,
-        base_plan.w_tfsa_spend,
-        alive_y, alive_s,
-    )
-    hi_marg = max(probe_hi.marginal_y, probe_hi.marginal_sp)
-    if (hi_marg + safety) <= peak_future_rate + 1e-9:
-        return float(melt_cap)
-
-    # Otherwise binary search for the largest safe melt
-    lo, hi = 0.0, melt_cap
-    for _ in range(28):  # ~1e-8 relative precision on typical ranges
-        mid = (lo + hi) / 2.0
-        probe = self._compute_household_cash(
+        # Quick check: if even the max melt is safe, take it
+        probe_hi = self._compute_household_cash(
             age_y, age_s, inc,
-            base_plan.w_rrif_spend + mid,
+            base_plan.w_rrif_spend + melt_cap,
             base_plan.w_nonreg_spend,
             base_plan.w_tfsa_spend,
             alive_y, alive_s,
         )
-        m = max(probe.marginal_y, probe.marginal_sp)
+        hi_marg = max(probe_hi.marginal_y, probe_hi.marginal_sp)
+        if (hi_marg + safety) <= peak_future_rate + 1e-9:
+            return float(melt_cap)
 
-        if (m + safety) <= peak_future_rate + 1e-9:
-            lo = mid     # mid is safe; try higher
-        else:
-            hi = mid     # mid too big; try lower
+        # Otherwise binary search for the largest safe melt
+        lo, hi = 0.0, melt_cap
+        for _ in range(28):  # ~1e-8 relative precision on typical ranges
+            mid = (lo + hi) / 2.0
+            probe = self._compute_household_cash(
+                age_y, age_s, inc,
+                base_plan.w_rrif_spend + mid,
+                base_plan.w_nonreg_spend,
+                base_plan.w_tfsa_spend,
+                alive_y, alive_s,
+            )
+            m = max(probe.marginal_y, probe.marginal_sp)
 
-    return float(lo)
+            if (m + safety) <= peak_future_rate + 1e-9:
+                lo = mid     # mid is safe; try higher
+            else:
+                hi = mid     # mid too big; try lower
+
+        return float(lo)
 
     # -------------------------
     # Withdrawal strategy
