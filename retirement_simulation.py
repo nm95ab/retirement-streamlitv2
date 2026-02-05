@@ -883,7 +883,7 @@ class RetirementSimulator:
 
                             plan.rrif_to_nonreg += leftover
 
-            return plan
+        return plan
 
     # -------------------------
     # Apply withdrawals + growth
@@ -895,20 +895,33 @@ class RetirementSimulator:
         tfsa_after = max(0.0, pots.tfsa_pot - plan.w_tfsa_spend)
         nonreg_after = max(0.0, pots.nonreg_pot - plan.w_nonreg_spend)
 
+        # Apply RRIF transfer deposits (after-tax)
         tfsa_after += plan.rrif_to_tfsa
         nonreg_after += plan.rrif_to_nonreg
 
-        if self.withdraw_at_start:
-            rrif_end = rrif_after * (1.0 + self.real_ret)
-            tfsa_end = tfsa_after * (1.0 + self.real_ret)
-            nonreg_end = nonreg_after * (1.0 + self.nonreg_real_ret)
-        else:
-            rrif_end = rrif_after
-            tfsa_end = tfsa_after
-            nonreg_end = nonreg_after
+        # -------------------------------------------------------
+        # NEW FINAL STEP: if TFSA room remains, shift NonReg -> TFSA
+        # -------------------------------------------------------
+        if self.tfsa_room > 1e-6 and nonreg_after > 1e-6:
+            move_amt = min(nonreg_after, self.tfsa_room)
+            nonreg_after -= move_amt
+            tfsa_after += move_amt
+            self.tfsa_room -= move_amt
+            # Optional debug
+        self.logger.debug(f"Final optimization: moved ${move_amt:,.2f} NonReg -> TFSA (room left=${self.tfsa_room:,.2f})")
 
-        next_year_recontribution = plan.w_tfsa_spend
-        return Balances(rrif_end, tfsa_end, nonreg_end), next_year_recontribution
+    # Growth timing
+    if self.withdraw_at_start:
+        rrif_end = rrif_after * (1.0 + self.real_ret)
+        tfsa_end = tfsa_after * (1.0 + self.real_ret)
+        nonreg_end = nonreg_after * (1.0 + self.nonreg_real_ret)
+    else:
+        rrif_end = rrif_after
+        tfsa_end = tfsa_after
+        nonreg_end = nonreg_after
+
+    next_year_recontribution = plan.w_tfsa_spend
+    return Balances(rrif_end, tfsa_end, nonreg_end), next_year_recontribution
 
     def _record_row(
         self,
