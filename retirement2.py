@@ -73,6 +73,39 @@ st.caption(
 # Inputs
 # ======================
 with st.sidebar:
+    st.header("Settings Import/Export")
+    
+    # --- DOWNLOAD ---
+    settings_data = collect_settings_from_session()
+    json_str = json.dumps(settings_data, indent=2)
+    st.download_button(
+        label="Download Current Settings (JSON)",
+        data=json_str,
+        file_name="retirement_settings.json",
+        mime="application/json",
+    )
+    
+    # --- UPLOAD ---
+    uploaded_file = st.file_uploader("Upload Settings (JSON)", type=["json"])
+    if uploaded_file is not None:
+        try:
+            new_settings = json.load(uploaded_file)
+            if isinstance(new_settings, dict):
+                # Update session state with new values
+                for k, v in new_settings.items():
+                    if k in DEFAULTS or k.startswith("___"):
+                        st.session_state[k] = v
+                
+                # Persistence + Refresh
+                save_settings(collect_settings_from_session())
+                st.success("Settings uploaded! Refreshing...")
+                st.rerun()
+            else:
+                st.error("Invalid settings file format.")
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
+
+    st.divider()
     st.header("Timeline")
     st.number_input("Start year", min_value=1900, max_value=2100, key="start_year", on_change=on_any_change)
     st.number_input("Your age in start year", min_value=0, max_value=120, key="your_start_age", on_change=on_any_change)
