@@ -335,10 +335,20 @@ st.pyplot(fig3)
 st.subheader("Year-by-year table")
 # Reorder / Filter some columns for the main view to make it cleaner
 cols_to_show = [
-    "Year", "Status", "Your Age", "Spouse Age",
-    "RRIF End", "TFSA End", "NonReg End",
-    "Marginal Rate (You)", "Marginal Rate (Spouse)",
-    "RRIF Withdraw (spend)", "RRIF -> TFSA Transfer", "RRIF -> NonReg Transfer",
+    "Year",
+    "Status", 
+    "Your Age", 
+    "Spouse Age",
+    "RRIF End", 
+    "TFSA End", 
+    "NonReg End",
+    "Marginal Rate (You)", 
+    "Marginal Rate (Spouse)",
+    "RRIF Withdraw (spend)", 
+    "TFSA Withdraw (spend)",
+    "NonReg Withdraw (spend)",
+    "RRIF -> TFSA Transfer", 
+    "RRIF -> NonReg Transfer",
     "RRIF Split % (You)",
     "Hypo Death Tax", "Hypo Net Estate",
     "Estate Tax Paid", "Net Estate Value", # Actual terminals
