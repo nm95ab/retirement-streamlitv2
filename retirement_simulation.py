@@ -132,6 +132,7 @@ class RetirementSimulator:
         # dynamic melt gating safety margin (absolute, e.g. 0.08 = 8 points)
         # NOTE: may have been tuned by global optimization above.
         self.dynamic_melt_safety_margin = float(self.s.get("dynamic_melt_safety_margin", 0.08))
+        self.dynamic_max_marginal_rate = float(self.s.get("dynamic_max_marginal_rate", 0.54))
 
         # TFSA room tracking
         self.tfsa_room = float(self.s.get("tfsa_room_start_total", 0.0))
@@ -641,6 +642,7 @@ class RetirementSimulator:
         """
         Find the largest melt amount m in [0, melt_cap] such that:
             max(marg_y, marg_s) + safety <= peak_future_rate
+            AND max(marg_y, marg_s) <= self.dynamic_max_marginal_rate
         Uses binary search on m (post-melt marginal).
         """
         safety = float(self.dynamic_melt_safety_margin)
@@ -651,7 +653,7 @@ class RetirementSimulator:
         if melt_cap <= 0.0 or peak_future_rate <= 0.0:
             return 0.0
 
-        # Quick check: if even the max melt is safe, take it
+        # Quick check: if even the max melt is safe and under guardrail, take it
         probe_hi = self._compute_household_cash(
             age_y, age_s, inc,
             base_plan.w_rrif_spend + melt_cap,
@@ -660,7 +662,11 @@ class RetirementSimulator:
             alive_y, alive_s,
         )
         hi_marg = max(probe_hi.marginal_y, probe_hi.marginal_sp)
-        if (hi_marg + safety) <= peak_future_rate + 1e-9:
+        
+        is_safe = (hi_marg + safety) <= peak_future_rate + 1e-9
+        is_under_guardrail = hi_marg <= self.dynamic_max_marginal_rate + 1e-9
+        
+        if is_safe and is_under_guardrail:
             return float(melt_cap)
 
         # Otherwise binary search for the largest safe melt
@@ -676,7 +682,10 @@ class RetirementSimulator:
             )
             m = max(probe.marginal_y, probe.marginal_sp)
 
-            if (m + safety) <= peak_future_rate + 1e-9:
+            is_safe = (m + safety) <= peak_future_rate + 1e-9
+            is_under_guardrail = m <= self.dynamic_max_marginal_rate + 1e-9
+
+            if is_safe and is_under_guardrail:
                 lo = mid     # mid is safe; try higher
             else:
                 hi = mid     # mid too big; try lower
@@ -813,10 +822,16 @@ class RetirementSimulator:
 
             allow_melt = True
             if mode == "dynamic" and peak_future_rate > 0:
-                allow_melt = (current_household_marg + self.dynamic_melt_safety_margin) < peak_future_rate
+                # GATING RULE: Current Marg + Safety < Peak, AND Current Marg < Guardrail
+                within_safety = (current_household_marg + self.dynamic_melt_safety_margin) < peak_future_rate
+                below_guardrail = current_household_marg < (self.dynamic_max_marginal_rate - 1e-6)
+                
+                allow_melt = within_safety and below_guardrail
+                
                 self.logger.info(
                     f"Melt gating (Dynamic): Current Marg {current_household_marg:.1%} + "
                     f"Safety {self.dynamic_melt_safety_margin:.1%} vs Peak {peak_future_rate:.1%} "
+                    f"(Guardrail {self.dynamic_max_marginal_rate:.1%}) "
                     f"-> Allow={allow_melt}"
                 )
 
