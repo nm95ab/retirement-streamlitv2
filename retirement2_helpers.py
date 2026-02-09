@@ -64,6 +64,7 @@ DEFAULTS = {
     "goal_income": 100000.0,          # after-tax goal
     "current_year_goal_income": 100000.0,
     "goal_is_after_tax": True,
+    "survivor_income_pct": 75.0,      # Percentage of goal income when only one spouse alive
 
     # ======================
     # Tax / NonReg approximation

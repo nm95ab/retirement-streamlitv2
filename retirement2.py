@@ -155,6 +155,7 @@ with st.sidebar:
     st.number_input("Household goal income - Current Year (Year 1)", min_value=0, step=1000, key="current_year_goal_income", on_change=on_any_change)
     st.number_input("Household goal income - Future Years", min_value=0, step=1000, key="goal_income", on_change=on_any_change)
     st.checkbox("Treat goal income as AFTER-TAX (net spend)", key="goal_is_after_tax", on_change=on_any_change)
+    st.slider("Survivor income % (when only one spouse alive)", 0.0, 100.0, key="survivor_income_pct", on_change=on_any_change)
 
     st.header("Your incomes (annual, today's $)")
     st.number_input("Your CPP starts at age", min_value=0, max_value=120, key="your_cpp_start_age", on_change=on_any_change)
@@ -254,13 +255,22 @@ df = pd.DataFrame(rows)
 # ======================
 # Output
 # ======================
-c1, c2, c3, c4, c5, c6 = st.columns(6)
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 total_savings_start = float(settings_now["rrif_start_balance"]) + float(settings_now["tfsa_start_balance"]) + float(settings_now["nonreg_start_balance"])
 c1.metric("Starting household savings", f"${total_savings_start:,.0f}")
 c2.metric("Goal income", f"${goal_income:,.0f}/yr")
 c3.metric("Goal type", "After-tax" if goal_is_after_tax else "Pre-tax")
-c5.metric("Spouse is", f"{int(st.session_state['spouse_age_diff']):+} years vs you")
-c6.metric("Your age when goal first not met", str(run_out_age_you) if run_out_age_you else "Goal met for full model window")
+
+# Calculate Lifetime After-Tax Value: sum of all after-tax spend + final net estate
+lifetime_after_tax_value = df["After-tax Spend"].sum() + df["Net Estate Value"].iloc[-1]
+c4.metric("Lifetime After-Tax Value", f"${lifetime_after_tax_value:,.0f}")
+
+# Calculate Lifetime Total Tax: sum of all taxes including estate tax
+lifetime_total_tax = df["Total Tax (est)"].sum() + df["Estate Tax Paid"].iloc[-1]
+c5.metric("Lifetime Total Tax", f"${lifetime_total_tax:,.0f}")
+
+c6.metric("Spouse is", f"{int(st.session_state['spouse_age_diff']):+} years vs you")
+c7.metric("Your age when goal first not met", str(run_out_age_you) if run_out_age_you else "Goal met for full model window")
 
 st.subheader("Visuals")
 
@@ -385,7 +395,7 @@ cols_to_show = [
     "RRIF Split % (You)",
     "Hypo Death Tax", "Hypo Net Estate",
     "Estate Tax Paid", "Net Estate Value", # Actual terminals
-    "Total Tax (est)", "After-Tax Cash Available"
+    "Total Tax (est)", "After-Tax Cash Available", "After-tax Spend"
 ]
 # Mapping if names are slightly different
 available_cols = df.columns.tolist()

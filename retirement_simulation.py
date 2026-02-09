@@ -573,10 +573,17 @@ class RetirementSimulator:
 
         return Incomes(fy_cpp, fy_oas, fy_pen, fs_cpp, fs_oas, fs_pen)
 
-    def _goal_for_year_index(self, i: int) -> float:
-        return float(self.s.get("current_year_goal_income", self.s["goal_income"])) if i == 0 else float(
+    def _goal_for_year_index(self, i: int, alive_y: bool = True, alive_s: bool = True) -> float:
+        base_goal = float(self.s.get("current_year_goal_income", self.s["goal_income"])) if i == 0 else float(
             self.s["goal_income"]
         )
+        
+        # Apply survivor percentage if only one spouse is alive
+        if (alive_y and not alive_s) or (alive_s and not alive_y):
+            survivor_pct = float(self.s.get("survivor_income_pct", 75.0)) / 100.0
+            return base_goal * survivor_pct
+        
+        return base_goal
 
     def _bracket_room_household(
         self, inc: Incomes, current_year_idx: int, alive_y: bool, alive_s: bool
@@ -998,6 +1005,7 @@ class RetirementSimulator:
                 "RRIF -> TFSA Transfer": float(plan.rrif_to_tfsa),
                 "RRIF -> NonReg Transfer": float(plan.rrif_to_nonreg),
                 "After-Tax Cash Available": float(plan.net_total),
+                "After-tax Spend": float(plan.net_total - plan.rrif_to_tfsa - plan.rrif_to_nonreg),
                 "Total Tax (est)": float(plan.tax_total),
                 "Marginal Rate (You)": float(plan.marginal_y),
                 "Marginal Rate (Spouse)": float(plan.marginal_sp),
@@ -1088,7 +1096,7 @@ class RetirementSimulator:
             pots = self._pots_for_year()
 
             inc = self._fixed_incomes_for_year(age_y, age_s, alive_y, alive_s)
-            goal = self._goal_for_year_index(i)
+            goal = self._goal_for_year_index(i, alive_y, alive_s)
 
             self.logger.info(
                 f"Fixed Income: ${inc.fy_cpp + inc.fy_oas + inc.fy_pen + inc.fs_cpp + inc.fs_oas + inc.fs_pen:,.2f} "
